@@ -3,29 +3,29 @@
 #include "battery.h"
 #include "file_manager.h"
 #include "audio_config.h"
-#include <ESP32Time.h>
 
 UIState currentUIState = UI_FOLDER_SELECT;
 M5Canvas sprite(&M5Cardputer.Display);
 M5Canvas spr(&M5Cardputer.Display);
 
-int bri = 2;
-int brightness[5] = {60, 120, 180, 220, 255};
-int sliderPos = 0;
-int textPos = 90;
-int graphSpeed = 0;
-int g[14] = {0};
 bool volumeUpdateRequest = false;
 bool nextTrackRequest = false;
+uint8_t bri = 2;
+uint8_t brightness[5] = {60, 120, 180, 220, 255};
+uint8_t sliderPos = 0;
+int16_t textPos = 90;
+uint8_t graphSpeed = 0;
+uint8_t g[14] = {0};
 unsigned short grays[18];
 unsigned short gray;
 unsigned short light;
+unsigned long trackStartMillis = 0;
+unsigned long playbackTime = 0; 
 
 static bool inFolder = false;
-static int selectedFolderIndex = 0;
-static int folderConfirmIndex = 0;
-static int selectedFileIndex = 0;
-static ESP32Time rtc(0);
+static short int selectedFolderIndex = 0;
+static short int folderConfirmIndex = 0;
+static short int selectedFileIndex = 0;
 
 void initUI() {
     M5Cardputer.Display.setRotation(1);
@@ -39,75 +39,80 @@ void initUI() {
         co = co - 13;
     }
 
-    rtc.setTime(0, 0, 0, 17, 1, 2021);
+    trackStartMillis = millis();
     
     Serial.println("UI initialized");
 }
 
+String getPlaybackTimeString() {
+    unsigned long elapsed = playbackTime;
+    if (isPlaying && !isStoped) elapsed = millis() - trackStartMillis;
+    
+    unsigned int seconds = (elapsed / 1000) % 60;
+    unsigned int minutes = (elapsed / 1000) / 60;
+
+    char buf[6];
+    sprintf(buf, "%02u:%02u", minutes, seconds);
+    return String(buf);
+}
+
 void drawFolderSelect() {
     gray = grays[15];
-    light = grays[11];
-    
+    light = grays[10];
+
     sprite.fillRect(0, 0, 240, 135, gray);
-    sprite.drawFastHLine(0, 0, 240, light);
-    sprite.drawFastHLine(0, 134, 240, light);
-    sprite.drawFastVLine(0, 0, 135, light);
-    sprite.drawFastVLine(239, 0, 135, light);
+    sprite.drawRoundRect(0, 0, 240, 135, 4, light);
 
-    sprite.setTextFont(0);
-    sprite.setTextDatum(4);
-    sprite.setTextColor(ORANGE, gray);
-    sprite.drawString("SELECT MUSIC FOLDER", 120, 15);
-
-    sprite.setTextColor(grays[4], gray);
+    sprite.fillRoundRect(5, 5, 230, 22, 4, grays[12]);
+    sprite.setTextFont(1);
+    sprite.setTextColor(WHITE, grays[12]);
     sprite.setTextDatum(0);
-    sprite.drawString("Use UP/DOWN arrows", 10, 100);
-    sprite.drawString("ENTER to select", 10, 112);
-    sprite.drawString("ESC to return here", 10, 124);
+    sprite.drawString("Path: " + currentFolder, 10, 11);
+
+    sprite.setTextFont(2);
+    sprite.setTextColor(ORANGE, gray);
+    sprite.setTextDatum(4);
+    sprite.drawString("Select Folder", 120, 33);
 
     sprite.setTextFont(0);
-    int startY = 35;
-    int lineHeight = 12;
+    sprite.setTextDatum(0);
+    sprite.setTextColor(grays[5], gray);
+    sprite.drawString("[;]/[.] - Navigate   [ok] - Open", 10, 110);
+    sprite.drawString("ESC - Back", 10, 122);
+
+    sprite.setTextFont(1);
+    int startY = 48;
+    int lineHeight = 14;
     int maxVisible = 5;
     int startIdx = max(0, selectedFolderIndex - 2);
-    
-    for (int i = 0; i < maxVisible && (startIdx + i) < folderCount; i++) {
+    int totalItems = folderCount + 1;
+
+    for (int i = 0; i < maxVisible && (startIdx + i) < totalItems; i++) {
         int idx = startIdx + i;
+        int y = startY + i * lineHeight;
+
+        bool isConfirmButton = (idx == folderCount);
+
         if (idx == selectedFolderIndex) {
-            sprite.setTextColor(WHITE, BLUE);
-            sprite.fillRect(8, startY + i * lineHeight - 1, 224, lineHeight, BLUE);
+            sprite.fillRoundRect(6, y - 1, 228, lineHeight + 2, 3,
+                                 isConfirmButton ? RED : BLUE);
+            sprite.setTextColor(WHITE, isConfirmButton ? RED : BLUE);
         } else {
-            sprite.setTextColor(GREEN, gray);
+            sprite.setTextColor(isConfirmButton ? RED : GREEN, gray);
         }
-        
-        String displayName = availableFolders[idx];
-        if (displayName == "/") {
-            displayName = "/ (Root)";
+
+        if (isConfirmButton) {
+            sprite.drawString("[> Confirm Selection]", 12, y);
+        } else {
+            String displayName = availableFolders[idx];
+            displayName = "..";
+            sprite.drawString(displayName.substring(0, 24), 12, y);
         }
-        sprite.drawString(displayName.substring(0, 28), 10, startY + i * lineHeight);
     }
-    
-    sprite.pushSprite(0, 0);
-}
-
-void drawFolderConfirm() {
-    gray = grays[15];
-    light = grays[11];
-
-    sprite.fillRect(0, 0, 240, 135, gray);
-    sprite.setTextFont(0);
-    sprite.setTextDatum(4);
-    sprite.setTextColor(RED, gray);
-    sprite.drawString("USE THIS FOLDER?", 120, 20);
-
-    sprite.setTextDatum(0);
-    sprite.setTextColor(GREEN, gray);
-    sprite.drawString("Folder: " + availableFolders[folderConfirmIndex], 10, 60);
-    sprite.drawString("ENTER - Yes", 10, 100);
-    sprite.drawString("ESC - Back", 10, 112);
 
     sprite.pushSprite(0, 0);
 }
+
 
 void drawPlayer() {
     if (graphSpeed == 0) {
@@ -157,7 +162,7 @@ void drawPlayer() {
         sprite.fillTriangle(228, 102, 228, 106, 231, 105, grays[13]);
         sprite.fillTriangle(220, 106, 220, 110, 217, 109, grays[13]);
         
-        if (!stoped) {
+        if (!isStoped) {
             sprite.fillRect(152, 104, 3, 6, grays[13]);
             sprite.fillRect(157, 104, 3, 6, grays[13]);
         } else {
@@ -176,7 +181,7 @@ void drawPlayer() {
         sprite.fillRect(234, 122, 3, 6, GREEN);
 
         for (int i = 0; i < 14; i++) {
-            if (!stoped)
+            if (!isStoped)
                 g[i] = random(1, 5);
             for (int j = 0; j < g[i]; j++)
                 sprite.fillRect(172 + (i * 4), 50 - j * 3, 3, 2, grays[4]);
@@ -225,7 +230,7 @@ void drawPlayer() {
 
         sprite.setTextColor(GREEN, BLACK);
         sprite.setFont(&DSEG7_Classic_Mini_Regular_16);
-        if (!stoped)
+        if (!isStoped)
             sprite.drawString(getPlaybackTimeString(), 172, 18);
         sprite.setTextFont(0);
 
@@ -244,7 +249,7 @@ void drawPlayer() {
 
         spr.fillSprite(BLACK);
         spr.setTextColor(GREEN, BLACK);
-        if (!stoped && fileCount > 0) {
+        if (!isStoped && fileCount > 0) {
             spr.drawString(getFileName(currentFileIndex), textPos, 4);
         }
         textPos -= 2;
@@ -261,11 +266,10 @@ void drawPlayer() {
 void draw() {
         if (currentUIState == UI_FOLDER_SELECT) {
             drawFolderSelect();
-        } else if (currentUIState == UI_FOLDER_CONFIRM) {
-            drawFolderConfirm();
-        } else {
-            drawPlayer();
+            return;
         }
+
+        drawPlayer();
     }
 
 void handleKeyPress(char key) {
@@ -284,7 +288,7 @@ void handleKeyPress(char key) {
                 currentFileIndex = 0;
                 currentUIState = UI_PLAYER;
                 isPlaying = true;
-                stoped = false;
+                isStoped = false;
                 textPos = 90;
             } else {
                 currentFolder = availableFolders[selectedFolderIndex];
@@ -304,56 +308,53 @@ void handleKeyPress(char key) {
         }
     }
     else {
-        if (key == '`' || key == '\b') {
-            audio.stopSong();
+    if (key == '`' || key == '\b') {
+        audio.stopSong();
+        isPlaying = false;
+        isStoped = true;
+        currentUIState = UI_FOLDER_SELECT;
+        selectedFolderIndex = 0;
+        scanAvailableFolders("/");
+    } else if (key == 'a' || key == ' ') {
+        if (isPlaying && !isStoped) {
+            playbackTime = millis() - trackStartMillis;
             isPlaying = false;
-            stoped = true;
-            currentUIState = UI_FOLDER_SELECT;
-            selectedFolderIndex = 0;
-            scanAvailableFolders("/");
-        } else if (key == 'a') {
-            if (isPlaying && !stoped) {
-                isPlaying = false;
-                stoped = true;
-            } else {
-                isPlaying = true;
-                stoped = false;
-            }
-        } else if (key == 'v') {
-            //volume += 5;
-            //if (volume > 20) volume = 5;
-            //audio.setVolume(volume);
-            volumeUpdateRequest = true;
-        } else if (key == 'l') {
-            bri++;
-            if (bri == 5) bri = 0;
-            M5Cardputer.Display.setBrightness(brightness[bri]);
-        } else if (key == 'n') {
+            isStoped = true;
+        } else {
+            trackStartMillis = millis() - playbackTime;
+            isPlaying = true;
+            isStoped = false;
+        }
+    } else if (key == 'v') {
+        volumeUpdateRequest = true;
+    } else if (key == 'l') {
+        bri++;
+        if (bri == 5) bri = 0;
+        M5Cardputer.Display.setBrightness(brightness[bri]);
+    } else if (key == 'n' || key == 'p' || key == 'r' || key == '\n') {
+        if (key == 'n') {
             currentFileIndex++;
             if (currentFileIndex >= fileCount) currentFileIndex = 0;
-            rtc.setTime(0, 0, 0, 1, 10, 2025);
-            textPos = 90;
-            nextTrackRequest = true;
         } else if (key == 'p') {
             currentFileIndex--;
             if (currentFileIndex < 0) currentFileIndex = fileCount - 1;
-            rtc.setTime(0, 0, 0, 1, 10, 2025);
-            textPos = 90;
-            nextTrackRequest = true;
-        } else if (key == ';') {
-            selectedFileIndex = selectedFileIndex - 1;
-            if (selectedFileIndex < 0) selectedFileIndex = fileCount - 1;
-        } else if (key == '.') {
-            selectedFileIndex++;
-            if (selectedFileIndex >= fileCount) selectedFileIndex = 0;  
+        } else if (key == 'r') {
+            currentFileIndex = random(0, fileCount);
         } else if (key == '\n') {
             currentFileIndex = selectedFileIndex;
-            nextTrackRequest = true;
-        }else if (key == 'r') {
-            rtc.setTime(0, 0, 0, 1, 10, 2025);
-            currentFileIndex = random(0, fileCount);
-            textPos = 90;
-            nextTrackRequest = true;
         }
+        trackStartMillis = millis();
+        playbackTime = 0;
+        isPlaying = true;
+        isStoped = false;
+        textPos = 90;
+        nextTrackRequest = true;
+    } else if (key == ';') {
+        selectedFileIndex--;
+        if (selectedFileIndex < 0) selectedFileIndex = fileCount - 1;
+    } else if (key == '.') {
+        selectedFileIndex++;
+        if (selectedFileIndex >= fileCount) selectedFileIndex = 0;  
     }
+}
 }

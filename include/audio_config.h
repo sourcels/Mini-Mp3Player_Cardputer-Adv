@@ -18,7 +18,7 @@ constexpr uint32_t ES8311_I2C_FREQ = 400000UL;
 extern Audio audio;
 extern int volume;
 extern bool isPlaying;
-extern bool stoped;
+extern bool isStoped;
 extern int hpDetectPin;
 extern int ampEnablePin;
 extern bool lastHPState;
@@ -26,7 +26,6 @@ extern bool codec_initialized;
 
 void handlePlayback(bool playCommand, bool stopCommand, bool nextTrack = false, bool prevTrack = false);
 void resetTimer();
-String getPlaybackTimeString();
 
 bool initES8311Codec();
 void playTestTone(uint32_t freq_hz, uint32_t duration_ms, uint32_t sample_rate = 44100, uint16_t amplitude = 12000);

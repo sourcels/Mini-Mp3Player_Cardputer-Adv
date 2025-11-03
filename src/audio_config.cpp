@@ -8,22 +8,11 @@
 Audio audio;
 int volume = 10;
 bool isPlaying = true;
-bool stoped = false;
+bool isStoped = false;
 int hpDetectPin = CARDPUTER_HP_DET_PIN;
 int ampEnablePin = CARDPUTER_AMP_EN_PIN;
 bool lastHPState = false;
 bool codec_initialized = false;
-
-void stopCommand() {
-    audio.stopSong();
-    isPlaying = false;
-    stoped = true;
-}
-
-void pauseCommand() {
-    isPlaying = false;
-    stoped = true;
-}
 
 static bool es8311_write(uint8_t reg, uint8_t val) {
     uint8_t data = val;

@@ -13,21 +13,22 @@ enum UIState {
 extern UIState currentUIState;
 extern M5Canvas sprite;
 extern M5Canvas spr;
-extern int bri;
-extern int brightness[5];
-extern int sliderPos;
-extern int textPos;
-extern int graphSpeed;
-extern int g[14];
+
 extern bool volumeUpdateRequest;
 extern bool nextTrackRequest;
+extern uint8_t bri;
+extern uint8_t brightness[5];
+extern uint8_t sliderPos;
+extern int16_t textPos;
+extern uint8_t graphSpeed;
+extern uint8_t g[14];
 extern unsigned short grays[18];
 extern unsigned short gray;
 extern unsigned short light;
+extern unsigned long trackStartMillis = 0;
+extern unsigned long playbackTime = 0; 
 
 void initUI();
-void drawFolderSelect();
-void drawPlayer();
 void draw();
 void handleKeyPress(char key);
 
